@@ -1,0 +1,43 @@
+plugins {
+    id 'java'
+}
+
+group = 'dev.dialogmenu'
+version = providers.gradleProperty('version').get()
+
+repositories {
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+    mavenCentral()
+    maven { url = 'https://repo.skriptlang.org/releases' }
+}
+
+def localClasspath = System.getenv('DIALOGMENU_LOCAL_CLASSPATH')
+dependencies {
+    if (localClasspath) {
+        compileOnly files(localClasspath.split(java.io.File.pathSeparator).collect { file(it) })
+    } else {
+        compileOnly 'io.papermc.paper:paper-api:26.3.build.+'
+        compileOnly('com.github.SkriptLang:Skript:2.16.2') {
+            transitive = false
+        }
+    }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+
+processResources {
+    filesMatching('plugin.yml') {
+        expand(version: project.version)
+    }
+}
+
+jar {
+    archiveFileName = "DialogMenu-${project.version}.jar"
+}

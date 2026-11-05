@@ -9,6 +9,7 @@ server-specific menus, images, or configuration.
 - Java 25
 - Paper-compatible server exposing the Minecraft 26.3 Dialog API
 - A client that supports Dialog and accepts the server resource pack
+- Build: `./gradlew build`; output: `build/libs/DialogMenu-<version>.jar`
 - Source is under `src/main/java/dev/dialogmenu/`; only the two public test
   layouts are included under `src/main/resources/layouts/`.
 
@@ -34,11 +35,24 @@ resource-pack delivery.
 
 ## Source
 
-The Java files are the neutralized v0.0.6 source snapshot. The source tree was
-compiled against the release classpath: 51 of 54 generated classes matched the
-published JAR byte-for-byte; the other three compiled successfully but were
-not byte-identical. No unfinished editor code or server-specific files are
-included.
+The complete v0.0.6 Java source, resources, Gradle build, and wrapper are in
+this repository. The build resolves Paper and Skript compile-time APIs from
+their public Maven repositories. CraftEngine integration is optional and
+loaded reflectively, so CraftEngine is not required to build. Only the two
+public test layouts are included. No unfinished editor code or server-specific
+files are included.
+
+## Publishing a new version
+
+1. Update `version` in `gradle.properties`; `plugin.yml` receives it during
+   the Gradle resource-processing step.
+2. Build and verify with `./gradlew clean build`.
+3. Commit the updated source and push it to `main`.
+4. Push a matching version tag, for example `git tag v0.0.7 && git push origin v0.0.7`.
+
+The tag workflow checks the version, builds the JAR from the committed source,
+packages the public source, and creates a GitHub Release with both files. A
+failed build or privacy/layout check prevents the release.
 
 ## Build and test status
 

@@ -34,6 +34,7 @@ public final class DialogMenuPlugin extends JavaPlugin implements Listener, TabE
     private FontPack fonts;
     private MenuSessions application;
     private ReloadEngine reloadEngine;
+    private CraftEngineBridge craftEngineBridge;
     private volatile ReloadEngine.Snapshot loaded;
     private boolean reloadRequested;
     private final YamlConfiguration preferences = new YamlConfiguration();
@@ -132,7 +133,7 @@ public final class DialogMenuPlugin extends JavaPlugin implements Listener, TabE
             getCommand("dialogmenu").setTabCompleter(this);
             Bukkit.getPluginManager().registerEvents(this, this);
             if (Bukkit.getPluginManager().isPluginEnabled("CraftEngine"))
-                Bukkit.getPluginManager().registerEvents(new CraftEngineBridge(this), this);
+                craftEngineBridge = new CraftEngineBridge(this);
             requestReload(Bukkit.getConsoleSender(), true);
         } catch (Exception error) {
             getLogger().log(java.util.logging.Level.SEVERE, "Dialog initialization failed", error);
@@ -140,6 +141,7 @@ public final class DialogMenuPlugin extends JavaPlugin implements Listener, TabE
         }
     }
     @Override public void onDisable() {
+        if (craftEngineBridge != null) craftEngineBridge.close();
         if (reloadEngine != null) reloadEngine.close();
         for (UUID id : List.copyOf(views.keySet())) {
             Player player = Bukkit.getPlayer(id);
