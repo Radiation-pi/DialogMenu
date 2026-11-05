@@ -6,7 +6,6 @@ import net.kyori.adventure.key.Key;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.*;
 import net.kyori.adventure.text.format.*;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import static dev.dialogmenu.MenuModel.*;
 
 /** One character per graphic, plus independent positioned Unicode text. */
@@ -38,43 +37,26 @@ final class SpriteCanvas {
         Map<Region, ClickEvent> clicks = new HashMap<>();
         for (Region region : menu.regions())
             if (region.hasActions()) clicks.put(region, bind.apply(region));
-        for (Sprite sprite : frame.sprites()) {
-            Node node = menu.nodes().stream().filter(n -> n.id().equals(sprite.id())).findFirst().orElse(null);
-            Region region = node == null || node.interaction() == null ? null : node.interaction().region(node);
-            addSprite(parts, sprite, fonts, region == null || !region.hasActions() ? null : bind.apply(region),
-                region == null ? null : hover(region, context));
+        Map<String, Sprite> sprites = new HashMap<>();
+        for (Sprite sprite : frame.sprites()) sprites.put(sprite.id(), sprite);
+        // Keep a single paint order for text and graphics, already sorted by z in LayoutStore.
+        for (Node node : menu.nodes()) {
+            if (node.type().equals("text")) {
+                addText(parts, menu, node, context, fonts, clicks, bind, width, height);
+            } else {
+                Sprite sprite = sprites.get(node.id());
+                if (sprite == null) continue;
+                Region region = node.interaction() == null ? null : node.interaction().region(node);
+                addSprite(parts, sprite, fonts,
+                    region == null || !region.hasActions() ? null : clicks.computeIfAbsent(region, bind),
+                    region == null ? null : hover(region, context));
+            }
         }
-        // Explicit legacy hit areas retain priority when mixed with inline controls.
+        // Explicit hit areas overlay visual nodes, in ascending priority (highest drawn last).
         for (int i = menu.regions().size() - 1; i >= 0; i--) {
             Region region = menu.regions().get(i);
             Sprite hit = MenuRenderer.hitSprite(menu, frame, region);
             if (hit != null) addSprite(parts, hit, fonts, clicks.get(region), hover(region, context));
-        }
-        double zoom = width / (double) menu.width();
-        for (Node node : frame.textNodes()) {
-            int size = textSize(menu, node, width, context.textScale());
-            List<String> lines = TextFlow.lines(node, context.expand(node.text()), zoom, text -> fonts.textWidth(text, size));
-            Region region = node.interaction() == null ? menu.hit(node.x(), node.y()) : node.interaction().region(node);
-            if (region != null && !clicks.containsKey(region) && region.hasActions())
-                clicks.put(region, bind.apply(region));
-            for (int line = 0; line < lines.size(); line++) {
-                String text = lines.get(line);
-                int advance = fonts.textWidth(text, size);
-                double anchor = (menu.width() / 2.0 + node.x()) * zoom;
-                int x = (int) Math.round(anchor - switch (node.alignment()) {
-                    case "left" -> 0;
-                    case "right" -> advance;
-                    default -> advance / 2.0;
-                });
-                int top = textTop(menu, node, width, line, size);
-                if (top < 0 || top + size > height || x < 0 || x + advance > width)
-                    throw new IllegalArgumentException(node.id() + " 原生文字超出画布");
-                Component label = legacy(text).font(Key.key("dialogmenu", FontPack.fontName(top, size)));
-                if (!text.matches(".*[&§][0-9a-fA-F].*"))
-                    label = label.color(TextColor.color(node.argb()));
-                if (region != null) label = label.clickEvent(clicks.get(region)).hoverEvent(hover(region, context));
-                parts.add(positioned(label, x, advance));
-            }
         }
         Component body = Component.empty();
         for (Component part : parts) body = body.append(part);
@@ -84,6 +66,32 @@ final class SpriteCanvas {
         }
         return new Output(body.decoration(TextDecoration.BOLD, false).decoration(TextDecoration.ITALIC, false)
             .shadowColor(ShadowColor.none()), width + 10, rows, frame.sprites().size());
+    }
+    private static void addText(List<Component> parts, Menu menu, Node node, Context context,
+                                FontPack fonts, Map<Region, ClickEvent> clicks,
+                                Function<Region, ClickEvent> bind, int width, int height) {
+        int size = textSize(menu, node, width, context.textScale());
+        double zoom = width / (double) menu.width();
+        Component parsed = MenuText.parse(context.expand(node.text()));
+        List<Component> lines = TextFlow.lines(node, parsed, zoom, glyph -> fonts.glyphWidth(glyph, size));
+        Region region = node.interaction() == null ? menu.hit(node.x(), node.y()) : node.interaction().region(node);
+        if (region != null && region.hasActions()) clicks.computeIfAbsent(region, bind);
+        for (int line = 0; line < lines.size(); line++) {
+            Component text = lines.get(line);
+            int advance = fonts.textWidth(text, size);
+            double anchor = (menu.width() / 2.0 + node.x()) * zoom;
+            int x = (int) Math.round(anchor - switch (node.alignment()) {
+                case "left" -> 0;
+                case "right" -> advance;
+                default -> advance / 2.0;
+            });
+            int top = textTop(menu, node, width, line, size);
+            if (top < 0 || top + size > height || x < 0 || x + advance > width)
+                throw new IllegalArgumentException(node.id() + " 原生文字超出画布");
+            Component label = text.font(fonts.textFont(top, size)).colorIfAbsent(TextColor.color(node.argb()));
+            if (region != null) label = label.clickEvent(clicks.get(region)).hoverEvent(hover(region, context));
+            parts.add(positioned(label, x, advance));
+        }
     }
     private static void addSprite(List<Component> parts, Sprite sprite, FontPack fonts,
                                   ClickEvent click, HoverEvent<Component> hover) {
@@ -96,5 +104,5 @@ final class SpriteCanvas {
         return region.tooltip().isEmpty() ? null
             : HoverEvent.showText(legacy(context.expand(String.join("\n", region.tooltip()))));
     }
-    static Component legacy(String text) { return LegacyComponentSerializer.legacyAmpersand().deserialize(text); }
+    static Component legacy(String text) { return MenuText.parse(text); }
 }

@@ -18,8 +18,7 @@ final class VanillaAssets {
     private final Path images;
     private final Map<String, BufferedImage> custom = new HashMap<>();
     final CraftEngineAssets craftEngine;
-    static final int[] COLORS = {0x000000, 0x0000AA, 0x00AA00, 0x00AAAA, 0xAA0000, 0xAA00AA,
-        0xFFAA00, 0xAAAAAA, 0x555555, 0x5555FF, 0x55FF55, 0x55FFFF, 0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF};
+
 
     VanillaAssets(Path images) throws IOException {
         this(images, null);
@@ -102,29 +101,5 @@ final class VanillaAssets {
     int glyphCount() { return glyphs.size(); }
     int iconCount() { return materials.size(); }
     Glyph glyph(int codepoint) { return glyphs.get(codepoint); }
-
-    record Letter(int code, int color, boolean bold) {}
-    static List<Letter> letters(String text, int initial) {
-        List<Letter> result = new ArrayList<>();
-        int color = initial;
-        boolean bold = false;
-        for (int i = 0; i < text.length();) {
-            int cp = text.codePointAt(i); i += Character.charCount(cp);
-            if ((cp == '&' || cp == '§') && i < text.length()) {
-                char c = Character.toLowerCase(text.charAt(i));
-                if (c == '#' && i + 7 <= text.length()
-                    && text.substring(i + 1, i + 7).matches("[0-9a-fA-F]{6}")) {
-                    color = (initial & 0xFF000000) | Integer.parseInt(text.substring(i + 1, i + 7), 16);
-                    i += 7; bold = false; continue;
-                }
-                int index = "0123456789abcdef".indexOf(c);
-                if (index >= 0) { color = (initial & 0xFF000000) | COLORS[index]; bold = false; i++; continue; }
-                if (c == 'l') { bold = true; i++; continue; }
-                if (c == 'r') { color = initial; bold = false; i++; continue; }
-            }
-            result.add(new Letter(cp, color, bold));
-        }
-        return result;
-    }
 
 }

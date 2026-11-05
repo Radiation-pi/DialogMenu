@@ -7,9 +7,9 @@ import static dev.dialogmenu.MenuModel.*;
 /** Main-thread gesture arbitration; no business action runs on the first click. */
 final class ClickGestures {
     static final long WINDOW_MILLIS = 300;
-    record Target(UUID session, String page, String permission, List<String> single, List<String> twice) {
+    record Target(UUID session, String page, String control, String permission, List<String> single, List<String> twice) {
         static Target of(UUID session, Menu menu, Region region, Context context) {
-            return new Target(session, menu.id(), region.permission(),
+            return new Target(session, menu.id(), region.id(), region.permission(),
                 region.actions().stream().map(context::expand).toList(),
                 region.doubleActions().stream().map(context::expand).toList());
         }

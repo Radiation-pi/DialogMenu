@@ -230,6 +230,8 @@ final class MenuTemplate {
                 regions.add(new Region(prefix, x, y, w, h, 0, "", List.of(label), actions));
             }
         }
+        nodes.sort(Comparator.comparingDouble(Node::z));
+        regions.sort(Comparator.comparingInt(Region::priority).reversed());
         return new LayoutStore.Document(new Menu(page, base.menu().permission(), base.menu().width(),
             base.menu().height(), List.copyOf(nodes), List.copyOf(regions), base.menu().closeWithEscape(),
             base.menu().scaleTextWithCanvas()), base.open(), base.close(), this);

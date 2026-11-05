@@ -252,7 +252,10 @@ final class MenuSessions {
         values.put("player", player.getName());
         values.put("uuid", player.getUniqueId().toString());
         values.put("server", plugin.getDataFolder().getAbsoluteFile().getParentFile().getParentFile().getName());
-        if (session == null) return placeholder(player, MenuTemplate.expand(text, values), text);
+        if (session == null) {
+            String expanded = MenuTemplate.expand(text, values);
+            return placeholder(player, expanded, expanded);
+        }
         values.putAll(session.values);
         var vars = session.definition.variables;
         if (vars != null) for (String name : vars.getKeys(false)) {

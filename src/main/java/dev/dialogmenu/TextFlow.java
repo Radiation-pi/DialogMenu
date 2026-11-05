@@ -3,56 +3,56 @@ package dev.dialogmenu;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.ToIntFunction;
+import net.kyori.adventure.text.Component;
 import static dev.dialogmenu.MenuModel.*;
 
-/** Wrap native characters by emitted glyph advances, keeping legacy styles across lines. */
+/** Wrap resolved Adventure glyphs without serializing styles back to format codes. */
 final class TextFlow {
-    static List<String> lines(Node node, String text, double zoom, ToIntFunction<String> measure) {
-        if (node.maxLines() == 0) return List.of(text.split("\\n", -1));
-        int limit = Math.max(1, (int) Math.floor(node.width() * node.scaleX() * zoom));
-        List<String> lines = new ArrayList<>();
-        StringBuilder line = new StringBuilder(), style = new StringBuilder();
+    static List<Component> lines(Node node, Component text, double zoom,
+                                 ToIntFunction<MenuText.Glyph> measure) {
+        List<MenuText.Glyph> glyphs = MenuText.glyphs(text);
+        int limit = node.maxLines() == 0 ? Integer.MAX_VALUE
+            : Math.max(1, (int) Math.floor(node.width() * node.scaleX() * zoom));
+        List<Component> lines = new ArrayList<>();
+        List<MenuText.Glyph> line = new ArrayList<>();
         int used = 0;
-        for (int i = 0; i < text.length();) {
-            int cp = text.codePointAt(i), length = Character.charCount(cp);
-            if ((cp == '&' || cp == '§') && i + 1 < text.length()) {
-                char code = Character.toLowerCase(text.charAt(i + 1));
-                int end = i + 2;
-                if (code == '#' && i + 8 <= text.length()
-                    && text.substring(i + 2, i + 8).matches("[0-9a-fA-F]{6}")) end = i + 8;
-                if (end > i + 2 || "0123456789abcdefklmnor".indexOf(code) >= 0) {
-                    String token = text.substring(i, end).replace('§', '&');
-                    if ("0123456789abcdefr#".indexOf(code) >= 0) style.setLength(0);
-                    style.append(token);
-                    line.append(token);
-                    i = end;
-                    continue;
-                }
+        for (int i = 0; i < glyphs.size();) {
+            MenuText.Glyph glyph = glyphs.get(i);
+            if (glyph.code() == '\n') {
+                lines.add(MenuText.component(line));
+                line.clear();
+                used = 0;
+                i++;
+                continue;
             }
-            String letter = Character.toString(cp);
-            if (cp < 128 && Character.isLetterOrDigit(cp)) {
-                int end = i + length;
-                while (end < text.length() && text.charAt(end) < 128 && Character.isLetterOrDigit(text.charAt(end))) end++;
-                if (end < text.length() && text.charAt(end) == '级') end++;
-                String word = text.substring(i, end);
-                if (measure.applyAsInt(style + word) <= limit) { letter = word; length = end - i; }
+            int end = i + 1;
+            if (asciiWord(glyph.code())) {
+                while (end < glyphs.size() && asciiWord(glyphs.get(end).code())) end++;
+                if (end < glyphs.size() && glyphs.get(end).code() == '级') end++;
             }
-            i += length;
-            int advance = cp == '\n' ? 0 : measure.applyAsInt(style + letter);
-            if (cp == '\n' || used + advance > limit && used > 0) {
-                lines.add(line.toString());
-                line.setLength(0);
-                line.append(style);
+            int advance = 0;
+            for (int j = i; j < end; j++) advance += measure.applyAsInt(glyphs.get(j));
+            if (advance > limit) {
+                end = i + 1;
+                advance = measure.applyAsInt(glyph);
+            }
+            if (advance > limit) throw new IllegalArgumentException(node.id() + " 单字超出line-width");
+            if (used > 0 && used + advance > limit) {
+                lines.add(MenuText.component(line));
+                line.clear();
                 used = 0;
             }
-            if (cp == '\n') continue;
-            if (advance > limit) throw new IllegalArgumentException(node.id() + " 单字超出line-width");
-            line.append(letter);
+            line.addAll(glyphs.subList(i, end));
             used += advance;
+            i = end;
         }
-        lines.add(line.toString());
-        if (lines.size() > node.maxLines())
+        lines.add(MenuText.component(line));
+        if (node.maxLines() > 0 && lines.size() > node.maxLines())
             throw new IllegalArgumentException(node.id() + " 文字超过max-lines=" + node.maxLines());
         return List.copyOf(lines);
+    }
+
+    private static boolean asciiWord(int code) {
+        return code < 128 && Character.isLetterOrDigit(code);
     }
 }

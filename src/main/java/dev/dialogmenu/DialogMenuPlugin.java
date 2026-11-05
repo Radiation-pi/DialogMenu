@@ -5,6 +5,8 @@ import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.event.player.PlayerCustomClickEvent;
 import io.papermc.paper.registry.RegistryKey;
 import io.papermc.paper.registry.data.dialog.DialogBase;
+import io.papermc.paper.registry.data.dialog.ActionButton;
+import io.papermc.paper.registry.data.dialog.action.DialogAction;
 import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
 import io.papermc.paper.registry.set.RegistrySet;
@@ -174,8 +176,9 @@ public final class DialogMenuPlugin extends JavaPlugin implements Listener, TabE
     };
     CompletableFuture<ReloadEngine.Result> prepareResources() { return reloadEngine.prepare(); }
     ReloadEngine.Snapshot loadedResources() { return loaded; }
+    void retainPack(Object consumer, ReloadEngine.Snapshot snapshot) { reloadEngine.retainPack(consumer, snapshot); }
     boolean publishResources(ReloadEngine.Result result) {
-        if (loaded == result.snapshot()) return false;
+        if (loaded != null && loaded.generation() >= result.snapshot().generation()) return false;
         long start = System.nanoTime();
         for (UUID id : List.copyOf(views.keySet())) {
             Player player = Bukkit.getPlayer(id);
@@ -269,13 +272,16 @@ public final class DialogMenuPlugin extends JavaPlugin implements Listener, TabE
                 var target = ClickGestures.Target.of(view.token, view.document.menu(), region, context(player));
                 return page.bind(() -> activate(player, target), target.twice().isEmpty() ? null : target);
             });
+        boolean escape = view.document.menu().closeWithEscape() == null ? loaded.settings().escape()
+            : view.document.menu().closeWithEscape();
+        var dialogType = DialogType.dialogList(RegistrySet.keySet(RegistryKey.DIALOG, List.of()));
+        if (escape) dialogType.exitAction(ActionButton.create(Component.text("关闭"), null, 150,
+            DialogAction.staticAction(page.bind(() -> close(player)))));
         Dialog dialog = Dialog.create(factory -> factory.empty()
-            .base(DialogBase.builder(Component.empty()).pause(false).canCloseWithEscape(
-                view.document.menu().closeWithEscape() == null ? loaded.settings().escape()
-                    : view.document.menu().closeWithEscape())
+            .base(DialogBase.builder(Component.empty()).pause(false).canCloseWithEscape(escape)
                 .afterAction(DialogBase.DialogAfterAction.NONE)
                 .body(List.of(DialogBody.plainMessage(output.component(), output.bodyWidth()))).build())
-            .type(DialogType.dialogList(RegistrySet.keySet(RegistryKey.DIALOG, List.of())).build()));
+            .type(dialogType.build()));
         player.showDialog(dialog);
         tokens.publish(player.getUniqueId(), page);
     }

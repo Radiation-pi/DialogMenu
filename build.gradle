@@ -16,11 +16,12 @@ dependencies {
     if (localClasspath) {
         compileOnly files(localClasspath.split(java.io.File.pathSeparator).collect { file(it) })
     } else {
-        compileOnly 'io.papermc.paper:paper-api:26.3.build.+'
+        compileOnly 'io.papermc.paper:paper-api:26.2.build.+'
         compileOnly('com.github.SkriptLang:Skript:2.16.2') {
             transitive = false
         }
     }
+    testImplementation files(configurations.compileClasspath)
 }
 
 java {
@@ -40,4 +41,28 @@ processResources {
 
 jar {
     archiveFileName = "DialogMenu-${project.version}.jar"
+}
+
+// Keep behavioral regressions part of the standard build without a test-framework dependency.
+tasks.register('regressionTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.dialogmenu.RegressionTests'
+    args layout.projectDirectory.asFile.absolutePath
+    jvmArgs '-Djava.awt.headless=true'
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('regressionTest')
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
+// The executable suite above is the test runner; no JUnit/TestNG engine is required.
+tasks.named('test') {
+    dependsOn tasks.named('regressionTest')
+    enabled = false
 }

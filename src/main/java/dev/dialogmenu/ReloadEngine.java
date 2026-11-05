@@ -16,19 +16,26 @@ final class ReloadEngine implements AutoCloseable {
     record Stamp(long size, FileTime modified) {}
     record Snapshot(Map<String, LayoutStore.Document> documents, VanillaAssets assets, MenuRenderer renderer,
                     FontPack fonts, Settings settings, Path pack, Map<Path, Stamp> inputs, long buildMillis,
-                    String buildThread) {}
+                    String buildThread, long generation) {}
     record Result(Snapshot snapshot, boolean changed) {}
     private final Path data;
     private final Context preview;
+    private final PackCache cache;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "DialogMenu-reload");
         thread.setDaemon(true);
         return thread;
     });
     private Snapshot latest;
+    private long generation;
     private CompletableFuture<Result> pending;
 
-    ReloadEngine(Path data, Context preview) { this.data = data; this.preview = preview; }
+    ReloadEngine(Path data, Context preview) {
+        this.data = data;
+        this.preview = preview;
+        this.cache = new PackCache(data.resolve("pack-cache"));
+    }
+    void retainPack(Object consumer, Snapshot snapshot) { cache.retain(consumer, snapshot.pack()); }
 
     synchronized CompletableFuture<Result> prepare() {
         if (pending != null && !pending.isDone()) return pending;
@@ -40,6 +47,7 @@ final class ReloadEngine implements AutoCloseable {
     }
     private Result build() throws Exception {
         long start = System.nanoTime();
+        cache.prune();
         if (latest != null && latest.inputs().equals(inputs(latest.assets()))) return new Result(latest, false);
         var yaml = new YamlConfiguration();
         yaml.loadFromString(Files.readString(data.resolve("config.yml")));
@@ -66,16 +74,22 @@ final class ReloadEngine implements AutoCloseable {
         var widths = new TreeSet<>(List.of(300, 360, 420, width));
         var fonts = FontPack.create(catalog, renderer, preview, widths, maxPixels,
             MenuTemplate.characters(documents.values()), scales);
-        for (var doc : catalog) for (int size : widths) {
-            var active = MenuTemplate.preview(doc, preview);
+        for (var doc : catalog) for (int size : widths) for (double scale : scales) {
+            var base = MenuTemplate.preview(doc, preview);
+            Context active = new Context() {
+                public String expand(String text) { return base.expand(text); }
+                public Icon item(int slot) { return base.item(slot); }
+                public boolean permitted(String permission) { return base.permitted(permission); }
+                public double textScale() { return scale; }
+            };
             var frame = renderer.draw(doc.menu(), active, size, maxPixels);
             new SpriteCanvas().encode(doc.menu(), frame, active, fonts, region -> null);
         }
         Path exported = data.resolve("resourcepack");
         fonts.write(exported);
-        Path cache = data.resolve("pack-cache");
-        Files.createDirectories(cache);
-        Path zip = cache.resolve("dialog-" + UUID.randomUUID() + ".zip");
+        Path packDirectory = data.resolve("pack-cache");
+        Files.createDirectories(packDirectory);
+        Path zip = packDirectory.resolve("dialog-" + UUID.randomUUID() + ".zip");
         try (var output = new ZipOutputStream(Files.newOutputStream(zip));
              var files = Files.walk(exported)) {
             for (Path path : files.filter(Files::isRegularFile).sorted().toList()) {
@@ -83,10 +97,15 @@ final class ReloadEngine implements AutoCloseable {
                 Files.copy(path, output);
                 output.closeEntry();
             }
+        } catch (Exception error) {
+            Files.deleteIfExists(zip);
+            throw error;
         }
-        latest = new Snapshot(documents, assets, renderer, fonts, settings, zip, inputs(assets),
-            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start), Thread.currentThread().getName());
-        return new Result(latest, true);
+        Snapshot next = new Snapshot(documents, assets, renderer, fonts, settings, zip, inputs(assets),
+            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start), Thread.currentThread().getName(), ++generation);
+        cache.retain(next, zip);
+        latest = next;
+        return new Result(next, true);
     }
     private Map<Path, Stamp> inputs(VanillaAssets assets) throws IOException {
         Set<Path> files = new HashSet<>();

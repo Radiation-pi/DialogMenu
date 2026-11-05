@@ -42,7 +42,7 @@ final class FontPack {
         for (var doc : docs.stream().sorted(Comparator.comparing(d -> d.menu().id())).toList()) {
             Context active = MenuTemplate.preview(doc, context);
             for (Node node : doc.menu().nodes()) if (node.type().equals("text"))
-                for (var letter : VanillaAssets.letters(node.text() + active.expand(node.text()), 0xFFFFFFFF))
+                for (var letter : MenuText.glyphs(MenuText.parse(node.text() + active.expand(node.text()))))
                     if (letter.code() != ' ' && letter.code() != '\n') characters.add(letter.code());
             for (int width : new TreeSet<>(widths)) {
                 Rendered frame = renderer.draw(doc.menu(), active, width, maxPixels);
@@ -55,13 +55,14 @@ final class FontPack {
                     if (hit != null) pack.register(hit);
                 }
                 for (Node node : frame.textNodes()) {
-                    int count = node.maxLines() > 0 ? node.maxLines()
-                        : active.expand(node.text()).split("\\n", -1).length;
                     for (double scale : textScales) {
                         int size = SpriteCanvas.textSize(doc.menu(), node, width, scale);
+                        // Unwrapped dynamic text may add explicit newlines up to the canvas edge.
+                        int count = node.maxLines() > 0 ? node.maxLines() : frame.image().getHeight() / (size + 1) + 1;
                         for (int line = 0; line < count; line++) {
                             int top = SpriteCanvas.textTop(doc.menu(), node, width, line, size);
-                            pack.textFonts.put(fontName(top, size), new TextFont(top, size));
+                            if (top >= 0 && top + size <= frame.image().getHeight())
+                                pack.textFonts.put(fontName(top, size), new TextFont(top, size));
                         }
                     }
                 }
@@ -184,20 +185,24 @@ final class FontPack {
             if (image.getRGB(ox + x, oy + y) >>> 24 != 0) used = Math.max(used, x + 1);
         return (int) (.5 + used * (displayHeight / (float) height)) + 1;
     }
-    int textWidth(String value) {
-        return textWidth(value, 8);
+    int textWidth(String value) { return textWidth(MenuText.parse(value), 8); }
+    int textWidth(String value, int size) { return textWidth(MenuText.parse(value), size); }
+    int textWidth(net.kyori.adventure.text.Component value, int size) {
+        return MenuText.glyphs(value).stream().mapToInt(glyph -> glyphWidth(glyph, size)).sum();
     }
-    int textWidth(String value, int size) {
-        int width = 0;
-        for (var letter : VanillaAssets.letters(value, 0xFFFFFFFF)) {
-            int[] metric = metrics.get(letter.code());
-            if (metric == null && letter.code() != 32) throw new IllegalArgumentException("文字已变化，请重新生成字体资源：U+"
-                + Integer.toHexString(letter.code()));
-            int advance = letter.code() == 32 ? (int) Math.round(size / 2.0)
-                : (int) (.5 + metric[0] * (size / (float) metric[1])) + 1;
-            width += advance + (letter.bold() ? 1 : 0);
-        }
-        return width;
+    int glyphWidth(MenuText.Glyph glyph, int size) {
+        int[] metric = metrics.get(glyph.code());
+        if (metric == null && glyph.code() != 32)
+            throw new IllegalArgumentException("文字已变化，请重新生成字体资源：U+" + Integer.toHexString(glyph.code()));
+        int advance = glyph.code() == 32 ? (int) Math.round(size / 2.0)
+            : (int) (.5 + metric[0] * (size / (float) metric[1])) + 1;
+        return advance + (glyph.bold() ? 1 : 0);
+    }
+    net.kyori.adventure.key.Key textFont(int top, int size) {
+        String name = fontName(top, size);
+        if (!textFonts.containsKey(name))
+            throw new IllegalArgumentException("文字位置已变化，请重新生成字体资源：" + name);
+        return net.kyori.adventure.key.Key.key("dialogmenu", name);
     }
     void write(Path target) throws IOException {
         Path base = target.resolve("assets/dialogmenu");
@@ -224,7 +229,7 @@ final class FontPack {
             writeJson(base.resolve("font/" + entry.getKey() + ".json"), Map.of("providers", characters));
         }
         writeJson(target.resolve("pack.mcmeta"), Map.of("pack", Map.of("description", "DialogMenu whole sprites",
-            "min_format", List.of(97, 1), "max_format", List.of(97, 1))));
+            "min_format", List.of(88, 0), "max_format", List.of(88, 0))));
     }
     private static Object bitmap(String texture, int height, int ascent, List<String> chars) {
         return Map.of("type", "bitmap", "file", texture.contains(":") ? texture : "dialogmenu:" + texture,

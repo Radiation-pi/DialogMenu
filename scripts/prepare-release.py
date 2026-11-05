@@ -104,6 +104,8 @@ def main(tag: str) -> None:
     files = [
         ROOT / "README.md",
         ROOT / "build.gradle",
+        ROOT / "build.py",
+        ROOT / "dependencies.lock.json",
         ROOT / "settings.gradle",
         ROOT / "gradle.properties",
         ROOT / "gradlew",

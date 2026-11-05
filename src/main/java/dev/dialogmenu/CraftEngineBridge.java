@@ -32,10 +32,10 @@ final class CraftEngineBridge implements Listener, AutoCloseable {
     private void cache(Event event) {
         try {
             var result = plugin.prepareResources().get();
-            Bukkit.getScheduler().callSyncMethod(plugin, () -> {
-                plugin.publishResources(result);
-                return null;
-            }).get();
+            // Avoid waiting on the main thread while CE is preparing its resource cache.
+            // Snapshot generations prevent delayed publication from replacing newer resources.
+            Bukkit.getScheduler().runTask(plugin, () -> plugin.publishResources(result));
+            plugin.retainPack(eventType.getMethod("cacheData").invoke(event), result.snapshot());
             eventType.getMethod("registerExternalResourcePack", Path.class)
                 .invoke(event, result.snapshot().pack());
             plugin.getLogger().info("CraftEngine registered Dialog pack ("
@@ -47,6 +47,7 @@ final class CraftEngineBridge implements Listener, AutoCloseable {
             var previous = plugin.loadedResources();
             if (previous != null) {
                 try {
+                    plugin.retainPack(eventType.getMethod("cacheData").invoke(event), previous);
                     eventType.getMethod("registerExternalResourcePack", Path.class)
                         .invoke(event, previous.pack());
                 } catch (ReflectiveOperationException reflectionError) {
