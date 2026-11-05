@@ -9,6 +9,8 @@ server-specific menus, images, or configuration.
 - Java 25
 - Paper-compatible server exposing the Minecraft 26.3 Dialog API
 - A client that supports Dialog and accepts the server resource pack
+- Source is under `src/main/java/dev/dialogmenu/`; only the two public test
+  layouts are included under `src/main/resources/layouts/`.
 
 Skript, PlaceholderAPI, and CraftEngine are optional integrations. Use the
 corresponding plugin only when your configuration relies on that integration.
@@ -29,6 +31,14 @@ With CraftEngine installed, DialogMenu registers its generated resource pack
 with CraftEngine. Without CraftEngine, run `/dialogmenu resources` and publish
 the generated `plugins/DialogMenu/resourcepack/` through your server's normal
 resource-pack delivery.
+
+## Source
+
+The Java files are the neutralized v0.0.6 source snapshot. The source tree was
+compiled against the release classpath: 51 of 54 generated classes matched the
+published JAR byte-for-byte; the other three compiled successfully but were
+not byte-identical. No unfinished editor code or server-specific files are
+included.
 
 ## Build and test status
 
